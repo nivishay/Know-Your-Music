@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, vi } from "vitest";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import { AudioPlayer } from "./AudioPlayer";
 
 describe("AudioPlayer", () => {
@@ -26,6 +26,22 @@ describe("AudioPlayer", () => {
       />
     );
     expect(screen.queryByText("Secret Artist")).not.toBeInTheDocument();
+  });
+
+  it("resets to paused state when audio.play() is rejected by the browser", async () => {
+    render(<AudioPlayer previewUrl="https://preview.example.com/clip.mp3" />);
+    const button = screen.getByRole("button", { name: /play/i });
+
+    // Simulate browser autoplay policy blocking play()
+    HTMLMediaElement.prototype.play = vi.fn().mockRejectedValue(new DOMException("NotAllowedError"));
+    HTMLMediaElement.prototype.pause = vi.fn();
+
+    await act(async () => {
+      fireEvent.click(button);
+    });
+
+    // Button should still show "Play" (not "Pause") since play was rejected
+    expect(screen.getByRole("button", { name: /play/i })).toBeInTheDocument();
   });
 
   it("does not render an img element (no album art)", () => {

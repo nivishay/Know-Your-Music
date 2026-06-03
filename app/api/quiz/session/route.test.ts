@@ -112,4 +112,19 @@ describe("POST /api/quiz/session", () => {
     const res = await postSession({ mode: "invalid" });
     expect(res.status).toBe(400);
   });
+
+  it("returns 500 when no clips could be built (all distractors failed)", async () => {
+    const { generateDistractors } = await import("@/services/quiz/generateDistractors");
+    vi.mocked(generateDistractors).mockResolvedValue(null);
+
+    const res = await postSession({ mode: "charts" });
+    expect(res.status).toBe(500);
+  });
+
+  it("returns 500 when the DB insert fails", async () => {
+    mockInsert.mockResolvedValue({ data: null, error: { message: "DB unavailable" } });
+
+    const res = await postSession({ mode: "charts" });
+    expect(res.status).toBe(500);
+  });
 });

@@ -41,29 +41,33 @@ describe("calculateScore", () => {
 });
 
 describe("getScoreLabel", () => {
-  it("returns Superfan for score 10", () => {
-    expect(getScoreLabel(10)).toBe("Superfan");
+  it("returns Superfan for a perfect score (10/10)", () => {
+    expect(getScoreLabel(10, 10)).toBe("Superfan");
   });
 
-  it("returns True Fan for scores 8 and 9", () => {
-    expect(getScoreLabel(8)).toBe("True Fan");
-    expect(getScoreLabel(9)).toBe("True Fan");
+  it("returns Superfan for a perfect score on a shortened quiz (8/8)", () => {
+    expect(getScoreLabel(8, 8)).toBe("Superfan");
   });
 
-  it("returns Casual Listener for scores 5, 6, 7", () => {
-    expect(getScoreLabel(5)).toBe("Casual Listener");
-    expect(getScoreLabel(6)).toBe("Casual Listener");
-    expect(getScoreLabel(7)).toBe("Casual Listener");
+  it("returns True Fan for scores 8 and 9 out of 10", () => {
+    expect(getScoreLabel(8, 10)).toBe("True Fan");
+    expect(getScoreLabel(9, 10)).toBe("True Fan");
   });
 
-  it("returns Just Passing Through for scores 3 and 4", () => {
-    expect(getScoreLabel(3)).toBe("Just Passing Through");
-    expect(getScoreLabel(4)).toBe("Just Passing Through");
+  it("returns Casual Listener for scores 5, 6, 7 out of 10", () => {
+    expect(getScoreLabel(5, 10)).toBe("Casual Listener");
+    expect(getScoreLabel(6, 10)).toBe("Casual Listener");
+    expect(getScoreLabel(7, 10)).toBe("Casual Listener");
   });
 
-  it("returns Who Are You? for scores 0, 1, 2", () => {
-    expect(getScoreLabel(0)).toBe("Who Are You?");
-    expect(getScoreLabel(1)).toBe("Who Are You?");
-    expect(getScoreLabel(2)).toBe("Who Are You?");
+  it("returns Just Passing Through for scores 3 and 4 out of 10", () => {
+    expect(getScoreLabel(3, 10)).toBe("Just Passing Through");
+    expect(getScoreLabel(4, 10)).toBe("Just Passing Through");
+  });
+
+  it("returns Who Are You? for scores 0, 1, 2 out of 10", () => {
+    expect(getScoreLabel(0, 10)).toBe("Who Are You?");
+    expect(getScoreLabel(1, 10)).toBe("Who Are You?");
+    expect(getScoreLabel(2, 10)).toBe("Who Are You?");
   });
 });

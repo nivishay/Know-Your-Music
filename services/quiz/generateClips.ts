@@ -14,6 +14,7 @@ export async function generateClips(token: string): Promise<TrackCandidate[]> {
     `https://api.spotify.com/v1/playlists/${GLOBAL_TOP_50_PLAYLIST_ID}/tracks?limit=50`,
     { headers: { Authorization: `Bearer ${token}` } }
   );
+  if (!response.ok) return [];
   const data = await response.json();
 
   const tracks: TrackCandidate[] = data.items

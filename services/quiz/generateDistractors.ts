@@ -9,10 +9,11 @@ export interface Distractors {
 export async function generateDistractors(
   token: string,
   seedTrackId: string,
-  correctArtistName: string
+  correctArtistName: string,
+  correctSongTitle: string
 ): Promise<Distractors | null> {
   const seenArtists = new Set<string>();
-  const seenSongs = new Set<string>();
+  const seenSongs = new Set<string>([correctSongTitle]);
   let artistDistractors: string[] = [];
   let songDistractors: string[] = [];
 
@@ -21,6 +22,7 @@ export async function generateDistractors(
       `https://api.spotify.com/v1/recommendations?seed_tracks=${seedTrackId}&limit=${RECOMMENDATIONS_LIMIT}`,
       { headers: { Authorization: `Bearer ${token}` } }
     );
+    if (!response.ok) return null;
     const data = await response.json();
     const tracks: Array<{ name: string; artists: Array<{ name: string }> }> = data.tracks;
 

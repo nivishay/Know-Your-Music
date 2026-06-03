@@ -21,7 +21,7 @@ export function AudioPlayer({ previewUrl }: AudioPlayerProps) {
       audio.pause();
       setPlaying(false);
     } else {
-      audio.play();
+      audio.play().catch(() => setPlaying(false));
       setPlaying(true);
     }
   }

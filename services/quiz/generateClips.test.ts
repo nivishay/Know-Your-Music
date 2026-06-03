@@ -83,6 +83,19 @@ describe("generateClips", () => {
     });
   });
 
+  it("returns an empty array when Spotify returns a non-200 response", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      json: async () => ({ error: { status: 401, message: "Unauthorized" } }),
+    }));
+
+    const { generateClips } = await import("./generateClips");
+    const clips = await generateClips("bad-token");
+
+    expect(clips).toEqual([]);
+  });
+
   it("calls the Spotify playlist API with the provided token", async () => {
     const tracks = Array.from({ length: 5 }, (_, i) => makeTrack({ id: `track-${i}` }));
     const fetchMock = vi.fn().mockResolvedValue({

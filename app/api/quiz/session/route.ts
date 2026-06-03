@@ -27,25 +27,33 @@ export async function POST(req: NextRequest) {
   const token = await getSpotifyAppToken();
   const trackCandidates = await generateClips(token);
 
-  const clips: Clip[] = [];
-  for (const track of trackCandidates) {
-    const distractors = await generateDistractors(token, track.trackId, track.artistName);
-    if (!distractors) continue;
+  const distractorResults = await Promise.allSettled(
+    trackCandidates.map((track) =>
+      generateDistractors(token, track.trackId, track.artistName, track.songTitle)
+    )
+  );
 
-    const songOptions = shuffle([track.songTitle, ...distractors.songDistractors]);
-    const artistOptions = shuffle([track.artistName, ...distractors.artistDistractors]);
+  const clips: Clip[] = trackCandidates
+    .map((track, i) => {
+      const result = distractorResults[i];
+      if (result.status !== "fulfilled" || result.value === null) return null;
+      const distractors = result.value;
+      return {
+        trackId: track.trackId,
+        previewUrl: track.previewUrl,
+        songQuestion: { correct: track.songTitle, options: shuffle([track.songTitle, ...distractors.songDistractors]) },
+        artistQuestion: { correct: track.artistName, options: shuffle([track.artistName, ...distractors.artistDistractors]) },
+      };
+    })
+    .filter((clip): clip is Clip => clip !== null);
 
-    clips.push({
-      trackId: track.trackId,
-      previewUrl: track.previewUrl,
-      songQuestion: { correct: track.songTitle, options: songOptions },
-      artistQuestion: { correct: track.artistName, options: artistOptions },
-    });
+  if (clips.length === 0) {
+    return NextResponse.json({ error: "Could not build quiz clips" }, { status: 500 });
   }
 
   const sessionId = randomUUID();
   const supabase = createAdminClient();
-  await supabase.from("quiz_sessions").insert({
+  const { error } = await supabase.from("quiz_sessions").insert({
     id: sessionId,
     user_id: null,
     mode: "general",
@@ -54,6 +62,10 @@ export async function POST(req: NextRequest) {
     total_possible: clips.length * 2,
     clips: clips as unknown as Json,
   });
+
+  if (error) {
+    return NextResponse.json({ error: "Failed to create session" }, { status: 500 });
+  }
 
   return NextResponse.json({ sessionId, clips });
 }

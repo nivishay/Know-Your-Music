@@ -102,6 +102,38 @@ describe("generateDistractors", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3); // initial + 2 retries
   });
 
+  it("never includes the correct song title in songDistractors", async () => {
+    const recommendations = [
+      makeRecommendation("Artist A", "Correct Song"), // same title as correct — should be excluded
+      makeRecommendation("Artist B", "Wrong Song B"),
+      makeRecommendation("Artist C", "Wrong Song C"),
+      makeRecommendation("Artist D", "Wrong Song D"),
+    ];
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => makeRecommendationsResponse(recommendations),
+    }));
+
+    const { generateDistractors } = await import("./generateDistractors");
+    const result = await generateDistractors("test-token", "seed-track-id", "Correct Artist", "Correct Song");
+
+    expect(result).not.toBeNull();
+    expect(result!.songDistractors).not.toContain("Correct Song");
+  });
+
+  it("returns null when Spotify returns a non-200 response", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: false,
+      status: 429,
+      json: async () => ({ error: { status: 429, message: "rate limited" } }),
+    }));
+
+    const { generateDistractors } = await import("./generateDistractors");
+    const result = await generateDistractors("test-token", "seed-track-id", "Correct Artist", "Correct Song");
+
+    expect(result).toBeNull();
+  });
+
   it("deduplicates artists across recommendations", async () => {
     const recommendations = [
       makeRecommendation("Wrong Artist A", "Song A"),

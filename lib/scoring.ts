@@ -1,10 +1,11 @@
 import type { QuizAnswer, ScoreLabel, ScoreResult } from "@/types";
 
-export function getScoreLabel(score: number): ScoreLabel {
-  if (score === 10) return "Superfan";
-  if (score >= 8) return "True Fan";
-  if (score >= 5) return "Casual Listener";
-  if (score >= 3) return "Just Passing Through";
+export function getScoreLabel(score: number, totalPossible: number): ScoreLabel {
+  if (score === totalPossible) return "Superfan";
+  const ratio = totalPossible > 0 ? score / totalPossible : 0;
+  if (ratio >= 0.8) return "True Fan";
+  if (ratio >= 0.5) return "Casual Listener";
+  if (ratio >= 0.3) return "Just Passing Through";
   return "Who Are You?";
 }
 
@@ -15,5 +16,5 @@ export function calculateScore(answers: QuizAnswer[]): ScoreResult {
     0
   );
   const totalPossible = answers.length * 2;
-  return { score, totalPossible, label: getScoreLabel(score) };
+  return { score, totalPossible, label: getScoreLabel(score, totalPossible) };
 }

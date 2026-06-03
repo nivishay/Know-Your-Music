@@ -20,7 +20,17 @@ export default async function ResultsPage({
     );
   }
 
-  const answers: QuizAnswer[] = JSON.parse(answersJson);
+  let answers: QuizAnswer[];
+  try {
+    answers = JSON.parse(answersJson);
+  } catch {
+    return (
+      <main className="p-8 text-center">
+        <p className="text-gray-500">Could not load results. Please try your quiz again.</p>
+      </main>
+    );
+  }
+
   const result = calculateScore(answers);
 
   return (
