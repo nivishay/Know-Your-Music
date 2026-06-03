@@ -1,3 +1,11 @@
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[];
+
 export type Database = {
   public: {
     Tables: {
@@ -19,6 +27,7 @@ export type Database = {
           refresh_token?: string;
           last_daily_played?: string | null;
         };
+        Relationships: [];
       };
       quiz_sessions: {
         Row: {
@@ -26,8 +35,9 @@ export type Database = {
           user_id: string | null;
           mode: string;
           format: string;
-          score: number;
+          score: number | null;
           total_possible: number;
+          clips: Json;
           created_at: string;
         };
         Insert: {
@@ -35,14 +45,17 @@ export type Database = {
           user_id?: string | null;
           mode: string;
           format: string;
-          score: number;
+          score?: number | null;
           total_possible: number;
+          clips: Json;
           created_at?: string;
         };
         Update: {
-          score?: number;
+          score?: number | null;
           total_possible?: number;
+          clips?: Json;
         };
+        Relationships: [];
       };
       streaks: {
         Row: {
@@ -56,7 +69,10 @@ export type Database = {
         Update: {
           longest_streak?: number;
         };
+        Relationships: [];
       };
     };
+    Views: Record<string, never>;
+    Functions: Record<string, never>;
   };
 };
