@@ -11,34 +11,46 @@ export async function GET(request: NextRequest) {
 
   const cookieStore = await cookies()
   const storedState = cookieStore.get('oauth_state')?.value
-  cookieStore.delete('oauth_state')
 
   if (!code || !state || state !== storedState) {
-    return NextResponse.redirect(new URL('/?error=auth_failed', request.nextUrl.origin))
+    console.error('[auth/callback] state_mismatch — code:', !!code, 'state:', !!state, 'stateMatch:', state === storedState, 'storedState:', !!storedState)
+    const response = NextResponse.redirect(new URL('/?error=auth_failed', request.nextUrl.origin))
+    response.cookies.delete('oauth_state')
+    return response
   }
 
-  const { accessToken, refreshToken } = await exchangeCode(code, {
-    clientId: env.spotify.clientId,
-    clientSecret: env.spotify.clientSecret,
-    redirectUri: env.spotify.redirectUri,
-  })
+  try {
+    const { accessToken, refreshToken } = await exchangeCode(code, {
+      clientId: env.spotify.clientId,
+      clientSecret: env.spotify.clientSecret,
+      redirectUri: env.spotify.redirectUri,
+    })
 
-  const { id: spotifyId } = await getSpotifyProfile(accessToken)
+    const { id: spotifyId } = await getSpotifyProfile(accessToken)
 
-  const encryptedRefreshToken = encryptToken(refreshToken, env.encryption.secret)
+    const encryptedRefreshToken = encryptToken(refreshToken, env.encryption.secret)
 
-  const supabase = createSupabaseAdminClient()
-  await supabase.from('users').upsert(
-    { spotify_id: spotifyId, refresh_token: encryptedRefreshToken },
-    { onConflict: 'spotify_id' },
-  )
+    const supabase = createSupabaseAdminClient()
+    const { error: upsertError } = await supabase.from('users').upsert(
+      { spotify_id: spotifyId, refresh_token: encryptedRefreshToken },
+      { onConflict: 'spotify_id' },
+    )
+    if (upsertError) {
+      console.error('[auth/callback] upsert failed:', upsertError)
+      return NextResponse.redirect(new URL('/?error=db_error', request.nextUrl.origin))
+    }
 
-  cookieStore.set('access_token', accessToken, {
-    httpOnly: true,
-    sameSite: 'lax',
-    maxAge: 60 * 60, // 1 hour
-    path: '/',
-  })
-
-  return NextResponse.redirect(new URL('/home', request.nextUrl.origin))
+    const response = NextResponse.redirect(new URL('/home', request.nextUrl.origin))
+    response.cookies.set('access_token', accessToken, {
+      httpOnly: true,
+      sameSite: 'lax',
+      maxAge: 60 * 60,
+      path: '/',
+    })
+    response.cookies.delete('oauth_state')
+    return response
+  } catch (err) {
+    console.error('[auth/callback] error:', err)
+    return NextResponse.redirect(new URL('/?error=auth_failed', request.nextUrl.origin))
+  }
 }
