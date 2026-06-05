@@ -2,8 +2,8 @@
 
 ## Concept
 
-A music quiz web app powered by Spotify. Users connect their Spotify account or play as a guest,
-and get quizzed on songs and artists through audio clips.
+A music quiz web app powered by Spotify. Users connect their Spotify account and get quizzed
+on their own music — songs they've liked, artists they love.
 
 ---
 
@@ -12,7 +12,7 @@ and get quizzed on songs and artists through audio clips.
 | Layer | Choice | Reason |
 |---|---|---|
 | Frontend + Backend | Next.js + TypeScript | One repo, API routes handle Spotify OAuth and quiz logic, deploys to Vercel |
-| Database | Supabase (PostgreSQL) | Free tier, relational model fits users/scores/sessions, works with Vercel |
+| Database | Supabase (PostgreSQL) | Free tier, stores user auth tokens, works with Vercel |
 | Deployment | Vercel | Purpose-built for Next.js, no cold starts, free tier covers MVP |
 | Fun Facts | Google Gemini Flash | Free tier (1M tokens/day), real-time generation, fast enough to show after answer |
 
@@ -20,79 +20,59 @@ and get quizzed on songs and artists through audio clips.
 
 ## Authentication & Token Strategy
 
-- Spotify login IS the account — no separate signup
+- Spotify login IS the account — no separate signup, no guest mode
 - **Refresh token:** stored encrypted in Supabase on the `users` row
 - **Access token:** stored in an HttpOnly cookie with 1-hour TTL
 - On each API request: check cookie validity, silently refresh via stored refresh token if expired
 - Tokens never exposed to client-side JS
-
-### Guest / General Mode — Server-Side Spotify Credentials
-- General mode API calls (charts, genre, artist search) require a server-side Spotify app token
-- Use **Client Credentials flow** — cached in memory or a Supabase row, refreshed before expiry
-- `getSpotifyAppToken()` singleton utility used by all general-mode API routes
-- Personal-mode routes use the user's OAuth token from Supabase instead
-- Frontend never touches a Spotify token directly
+- Scopes required: `user-top-read`, `user-library-read`
 
 ---
 
-## User Modes
+## User Flow
 
-### Guest (no login)
-- Access to general mode only
-- Scores are session-based — lost on close
-- No DB persistence
-- CTA to connect Spotify to unlock personal mode
+1. Visitor hits the site → sees minimal landing page (app name + tagline + "Connect with Spotify" button)
+2. After Spotify OAuth → lands on home screen
+3. Home screen shows three quiz entry points (see Quiz Modes below)
+4. User picks a mode → quiz starts → results page on completion
 
-### Connected (Spotify OAuth)
-- Access to both general mode and personal mode
-- Scores saved to DB (keyed to Spotify user ID)
+---
+
+## Home Screen Layout
+
+Three sections, mobile-first:
+
+1. **"How well do you know your music?"** — primary card, launches a 5-song quiz from liked songs
+2. **Artist cards** — scrollable horizontal strip of user's top 20 artists (from `GET /me/top/artists`)
+   - Each card = "How well do you know [Artist]?"
+   - Search bar above the strip to find any artist (not just top 20)
+3. **"Try a song"** — single-song demo mode, no score
 
 ---
 
 ## Quiz Modes
 
-### General Mode (available to everyone)
-Three flavors:
-1. **Popular charts** — quizzes based on Spotify global trending tracks
-2. **Genre picks** — user selects from a curated list of ~15 genres (see below)
-3. **Artist/band deep dive** — search bar at top + scrollable curated list of popular artists below
+### Your Music Quiz
+- Pool: fetch most recent **100 liked songs** (`GET /me/tracks`), filter to tracks with `preview_url`
+- Randomly sample 5 from the filtered pool
+- Fallback: if fewer than 5 tracks have preview URLs → show error: *"Not enough playable tracks in your library"*
 
-### Personal Mode (Spotify connected only)
-- Quizzes drawn from the user's **top tracks** + **liked songs**
-- Spotify OAuth scopes needed: `user-top-read`, `user-library-read`
-- Pool: ~50 tracks per session — 35 from top tracks + 15 randomly sampled from liked songs
-- Filtered to tracks with preview URLs only before building the pool
-- If a user has fewer than 15 liked songs with previews, fill remainder from top tracks
-- If chosen artist has fewer than 5 tracks with previews: show "Not enough playable tracks — try another"
+### Artist Quiz
+- Entry point A: tap a card from the top 20 artist strip
+- Entry point B: search any artist via search bar
+- Track source: `GET /search?q={artist}&type=track`, filter for `preview_url`, pick 5 randomly
 
----
+> **⚠️ Validation spike required before building:** confirm that search-based track fetching
+> for a given artist reliably returns 5+ tracks with `preview_url`. Test before implementing.
 
-## Quiz Formats
+- Fallback: if fewer than 5 preview-able tracks found → inline error on home screen: *"Not enough playable tracks for [Artist] — try another"*
 
-### Daily Challenge
-- One song, same for all users each day (Wordle model)
-- **Selection:** fetch Spotify global top 50 once per day (cached in Supabase), pick using `day_of_year % 50`
-- **Share:** URL share button only — links to `/daily`
-- **Replay prevention:** logged-in users blocked via `last_daily_played` date on `users` row; guests via localStorage flag (bypassable, not worth solving in MVP)
-- No score saved
-
-### Quiz Round
-- 5 clips per round
-- Each clip = 2 sequential questions: Name That Song first, then Name That Artist
-- 10 possible points per round (2 per clip)
-- Score saved to DB for logged-in users
-- Final screen shows score + label (see Score Labels)
-- All 5 clips + distractors pre-generated upfront in a single server call at round start
-
-### Streak Mode
-- Setup screen before starting — user picks general or personal pool (personal only shown if logged in)
-- Endless clips, 3 hearts
-- Each clip = 2 sequential questions (same as Quiz Round)
-- **Heart loss rule:**
-  - Both wrong → lose 1 heart
-  - At least one correct → no heart lost
-- Questions fetched in batches of 10; refill triggered when 3 remain
-- Longest streak (highest score before game over) saved to DB for logged-in users
+### Try a Song (Demo Mode)
+- Pool: liked songs (same 100 fetched for Your Music Quiz — reuse, no extra API call)
+- Picks 1 random track with `preview_url`
+- Plays both questions (Name That Song + Name That Artist)
+- Shows fun fact after answer
+- No score, no results page — ends with a CTA to start a full quiz
 
 ---
 
@@ -102,9 +82,22 @@ Each audio clip presents two questions **sequentially**:
 1. **Name That Song** — hear clip, pick song title from 4 options
 2. **Name That Artist** — pick artist from 4 options (appears after song answer)
 
-Points: 1 per correct answer. Max 2 per clip.
+Points: 1 per correct answer. Max 2 per clip. Max 10 per full quiz round.
 
-**No other question types in MVP.** (Song Sequence pushed to v2.)
+**No other question types in MVP.**
+
+---
+
+## Wrong Answer (Distractor) Generation
+
+**MVP: pool-based distractors**
+- Wrong song titles and wrong artist names are drawn from other tracks in the same fetched pool
+- For Your Music Quiz: distractors come from the other ~95 songs in the liked songs pool
+- For Artist Quiz: distractors come from other tracks fetched for that artist, supplemented by user's top artists list
+- Zero extra API calls — all data already in memory
+
+> **V2 note:** Replace with smarter distractors — same era, same genre, contextually similar artists —
+> so wrong answers are believable and difficulty scales appropriately.
 
 ---
 
@@ -120,6 +113,14 @@ Points: 1 per correct answer. Max 2 per clip.
 
 ---
 
+## Results Page
+
+- Separate route: `/results/[sessionId]`
+- Shows: score, score label, song-by-song breakdown
+- CTAs: "Play again", "Try another artist", "Back to home"
+
+---
+
 ## Audio
 
 - **Source:** Spotify 30-second preview URLs (~80% track coverage; tracks without previews are skipped)
@@ -127,24 +128,6 @@ Points: 1 per correct answer. Max 2 per clip.
 - **Player UI:** Shows zero identifying info — no song title, artist name, or album art
 - **Replays:** Unlimited, always
 - After first user tap in a session, clips can auto-advance within the same session
-
----
-
-## Genre Picks — Curated List
-
-~15 genres with clean display names and emoji icons. Hardcoded, maps to valid Spotify genre seeds:
-
-Pop, Hip-Hop, Rock, R&B, Latin, EDM, Country, Jazz, Indie, Metal, K-Pop, Classical, Reggae, Blues, Soul
-
----
-
-## Wrong Answer (Distractor) Generation
-
-- Source: Spotify `/v1/recommendations` seeded with the correct track/artist
-- For **Name That Artist**: extract artist from each recommended track, deduplicate, filter out correct artist
-- If fewer than 3 unique wrong artists found: retry up to 2x with different seed track
-- If still insufficient after 2 retries: skip that track, pick a different question track
-- Server uses app token (Client Credentials) for general mode distractor calls
 
 ---
 
@@ -156,32 +139,19 @@ Pop, Hip-Hop, Rock, R&B, Latin, EDM, Country, Jazz, Indie, Metal, K-Pop, Classic
 - Prompt: `"Give me 2 punchy, surprising facts about '[song]' by [artist] (released [year]). Max 40 words. Be specific and fun, no fluff."`
 - **3-second timeout** — silent failure if slow or unavailable (fun fact section hidden, no error shown)
 - Loads asynchronously, non-blocking
+- Shown in demo mode (Try a Song) as well as full quiz rounds
 
 ---
 
-## Scoring & Persistence
-
-### Database Schema (MVP — 3 tables)
+## Database Schema (MVP — 1 table)
 
 **`users`**
-- `spotify_id`, `refresh_token` (encrypted), `last_daily_played`, `created_at`
+- `spotify_id`, `refresh_token` (encrypted), `created_at`
 
-**`quiz_sessions`**
-- `id`, `user_id`, `mode` (general/personal), `format` (round/streak), `score`, `total_possible`, `created_at`
-
-**`streaks`**
-- `user_id`, `longest_streak`
-
-### Persistence Rules
-- Quiz Round scores saved to `quiz_sessions` on completion
-- Streak Mode high scores saved to `streaks` (longest only)
-- Daily challenge: not persisted per user beyond `last_daily_played`
-- Quiz history is saved to DB but **not surfaced in any UI in MVP**
-- No leaderboards in MVP
+No quiz session persistence in MVP. Added when profile/history UI is built in v2.
 
 ### Mid-Quiz Exit
 - Progress lost silently — no confirmation dialog
-- Browser native `beforeunload` warning not used (inconsistent on mobile)
 
 ---
 
@@ -189,11 +159,9 @@ Pop, Hip-Hop, Rock, R&B, Latin, EDM, Country, Jazz, Indie, Metal, K-Pop, Classic
 
 | Route | Description |
 |---|---|
-| `/` | Home — mode picker, login CTA for guests |
-| `/daily` | Daily challenge |
-| `/quiz/general` | General mode setup (pick flavor: charts / genre / artist) |
-| `/quiz/personal` | Personal mode (Spotify required) |
-| `/quiz/[sessionId]` | Active quiz round or streak session |
+| `/` | Landing page for unauthenticated users (tagline + Spotify connect button) |
+| `/home` | Home screen — quiz mode picker (requires auth) |
+| `/quiz/[sessionId]` | Active quiz round |
 | `/results/[sessionId]` | Score screen + fun facts |
 | `/auth/callback` | Spotify OAuth callback |
 
@@ -210,22 +178,36 @@ Pop, Hip-Hop, Rock, R&B, Latin, EDM, Country, Jazz, Indie, Metal, K-Pop, Classic
 
 ## Out of Scope for MVP
 
+- Guest / general mode
+- Daily challenge
+- Streak mode
 - Song Sequence question type
 - Release year / decade question type
-- Quiz history / profile UI (data saved, UI deferred)
+- Quiz history / profile UI
 - Leaderboards (global or friends)
 - Image-based score sharing
 - Email/password accounts
 - Spotify Premium / full track playback
 - Pre-generated / cached fun facts
-- Daily login streak tracking
 - Difficulty settings
+- Smart distractors (same era / genre)
+- Quiz session persistence (`quiz_sessions` table)
 
 ---
 
-## Open Questions for Later
+## V2 Roadmap
 
-- Difficulty settings (easy = obvious distractors, hard = same-era similar artists)?
-- Notification / daily reminder to play the daily challenge?
-- Song Sequence question type design?
-- Profile / history UI?
+- **Streak mode** — endless clips, 3 hearts, high score saved to DB
+- **Smart distractors** — same era, same genre, contextually similar to correct answer
+- **Quiz session persistence** — `quiz_sessions` table, history UI, profile page
+- **Daily challenge** — Wordle-style, one song per day for all users
+- **Score sharing** — image card or URL share
+- **Difficulty settings** — easy (obvious distractors) vs hard (same-era similar artists)
+- **Song Sequence** question type
+
+---
+
+## Open Questions
+
+- Which Spotify app dev-mode limitations apply once we have real users? (25-user limit in dev mode — need quota extension for public launch)
+- Artist search UX: search-as-you-type or submit button?
