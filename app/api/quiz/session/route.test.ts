@@ -2,44 +2,43 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 
-const MOCK_TRACKS = Array.from({ length: 5 }, (_, i) => ({
+vi.mock("next/headers", () => ({
+  cookies: vi.fn().mockResolvedValue({
+    get: vi.fn().mockImplementation((name: string) =>
+      name === "spotify_access_token" ? { value: "test-token" } : undefined
+    ),
+    set: vi.fn(),
+    delete: vi.fn(),
+  }),
+}));
+
+const MOCK_CLIPS = Array.from({ length: 5 }, (_, i) => ({
   trackId: `track-${i}`,
   previewUrl: `https://preview.example.com/${i}.mp3`,
-  songTitle: `Song ${i}`,
-  artistId: `artist-${i}`,
-  artistName: `Artist ${i}`,
+  songQuestion: {
+    correct: `Song ${i}`,
+    options: [`Song ${i}`, "Wrong Song A", "Wrong Song B", "Wrong Song C"],
+  },
+  artistQuestion: {
+    correct: `Artist ${i}`,
+    options: [`Artist ${i}`, "Wrong A", "Wrong B", "Wrong C"],
+  },
 }));
 
-const MOCK_DISTRACTORS = {
-  artistDistractors: ["Wrong A", "Wrong B", "Wrong C"],
-  songDistractors: ["Wrong Song A", "Wrong Song B", "Wrong Song C"],
-};
+const mockCreateSession = vi.fn().mockResolvedValue({
+  sessionId: "mock-session-id",
+  clips: MOCK_CLIPS,
+});
 
-vi.mock("@/services/spotify/appToken", () => ({
-  getSpotifyAppToken: vi.fn().mockResolvedValue("test-app-token"),
-}));
-
-vi.mock("@/services/quiz/generateClips", () => ({
-  generateClips: vi.fn().mockResolvedValue(MOCK_TRACKS),
-}));
-
-vi.mock("@/services/quiz/generateDistractors", () => ({
-  generateDistractors: vi.fn().mockResolvedValue(MOCK_DISTRACTORS),
-}));
-
-const mockInsert = vi.fn().mockResolvedValue({ data: null, error: null });
-vi.mock("@/lib/supabase/server", () => ({
-  createAdminClient: vi.fn(() => ({
-    from: vi.fn(() => ({
-      insert: mockInsert,
-    })),
-  })),
+vi.mock("@/services/quiz/createSession", () => ({
+  createSession: mockCreateSession,
+  SessionError: class SessionError extends Error {},
 }));
 
 describe("POST /api/quiz/session", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockInsert.mockResolvedValue({ data: null, error: null });
+    mockCreateSession.mockResolvedValue({ sessionId: "mock-session-id", clips: MOCK_CLIPS });
   });
 
   async function postSession(body: object) {
@@ -52,8 +51,8 @@ describe("POST /api/quiz/session", () => {
     return POST(req);
   }
 
-  it("returns 5 clips each with exactly 4 answer options for charts mode", async () => {
-    const res = await postSession({ mode: "charts" });
+  it("returns 5 clips each with exactly 4 answer options for charts flavor", async () => {
+    const res = await postSession({ flavor: "charts" });
     const data = await res.json();
 
     expect(res.status).toBe(200);
@@ -64,67 +63,32 @@ describe("POST /api/quiz/session", () => {
     });
   });
 
-  it("never includes the correct answer in the distractor list", async () => {
-    const res = await postSession({ mode: "charts" });
-    const data = await res.json();
-
-    data.clips.forEach(
-      (
-        clip: {
-          songQuestion: { correct: string; options: string[] };
-          artistQuestion: { correct: string; options: string[] };
-        },
-        i: number
-      ) => {
-        const wrongSongs = clip.songQuestion.options.filter((o) => o !== clip.songQuestion.correct);
-        expect(wrongSongs).not.toContain(clip.songQuestion.correct);
-
-        const wrongArtists = clip.artistQuestion.options.filter((o) => o !== clip.artistQuestion.correct);
-        expect(wrongArtists).not.toContain(clip.artistQuestion.correct);
-
-        // Correct answer IS in options exactly once
-        expect(clip.songQuestion.options.filter((o) => o === MOCK_TRACKS[i].songTitle)).toHaveLength(1);
-        expect(clip.artistQuestion.options.filter((o) => o === MOCK_TRACKS[i].artistName)).toHaveLength(1);
-      }
-    );
-  });
-
-  it("inserts a quiz_sessions row in the DB", async () => {
-    await postSession({ mode: "charts" });
-
-    expect(mockInsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        mode: "general",
-        format: "round",
-      })
-    );
-  });
-
   it("returns a sessionId in the response", async () => {
-    const res = await postSession({ mode: "charts" });
+    const res = await postSession({ flavor: "charts" });
     const data = await res.json();
 
     expect(data.sessionId).toBeTruthy();
     expect(typeof data.sessionId).toBe("string");
   });
 
-  it("returns 400 for invalid mode", async () => {
-    const res = await postSession({ mode: "invalid" });
+  it("calls createSession with the flavor and round format", async () => {
+    await postSession({ flavor: "charts" });
+
+    expect(mockCreateSession).toHaveBeenCalledWith(
+      expect.objectContaining({ flavor: "charts", format: "round" })
+    );
+  });
+
+  it("returns 400 for an invalid flavor", async () => {
+    const res = await postSession({ flavor: "invalid" });
     expect(res.status).toBe(400);
   });
 
-  it("returns 500 when no clips could be built (all distractors failed)", async () => {
-    const { generateDistractors } = await import("@/services/quiz/generateDistractors");
-    vi.mocked(generateDistractors).mockResolvedValue(null);
+  it("returns 500 when createSession throws", async () => {
+    const { SessionError } = await import("@/services/quiz/createSession");
+    mockCreateSession.mockRejectedValue(new SessionError("Could not build any quiz clips"));
 
-    const res = await postSession({ mode: "charts" });
-    expect(res.status).toBe(500);
-  });
-
-  it("returns 500 when the DB insert fails", async () => {
-    mockInsert.mockResolvedValue({ data: null, error: { message: "DB unavailable" } });
-
-    const res = await postSession({ mode: "charts" });
+    const res = await postSession({ flavor: "charts" });
     expect(res.status).toBe(500);
   });
 });

@@ -18,15 +18,21 @@ export function QuizClient({ sessionId, clips }: QuizClientProps) {
 
   const currentClip = clips[currentIndex];
 
-  function handleClipComplete(answer: QuizAnswer) {
+  async function handleClipComplete(answer: QuizAnswer) {
     const updated = [...answers, { ...answer, clipIndex: currentIndex }];
     setAnswers(updated);
 
     if (currentIndex + 1 < clips.length) {
       setCurrentIndex(currentIndex + 1);
     } else {
-      const params = new URLSearchParams({ answers: JSON.stringify(updated) });
-      router.push(`/results/${sessionId}?${params}`);
+      // Save answers to the session before navigating; silent failure matches
+      // the spec's "progress lost silently on exit" behaviour.
+      await fetch(`/api/quiz/session/${sessionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ answers: updated }),
+      }).catch(() => {});
+      router.push(`/results/${sessionId}`);
     }
   }
 

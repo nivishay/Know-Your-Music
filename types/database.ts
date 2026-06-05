@@ -38,6 +38,7 @@ export type Database = {
           score: number | null;
           total_possible: number;
           clips: Json;
+          answers: Json | null;
           created_at: string;
         };
         Insert: {
@@ -48,12 +49,14 @@ export type Database = {
           score?: number | null;
           total_possible: number;
           clips: Json;
+          answers?: Json | null;
           created_at?: string;
         };
         Update: {
           score?: number | null;
           total_possible?: number;
           clips?: Json;
+          answers?: Json | null;
         };
         Relationships: [];
       };

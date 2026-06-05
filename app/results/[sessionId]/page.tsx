@@ -1,18 +1,23 @@
 import { ScoreScreen } from "@/components/ScoreScreen";
 import { calculateScore } from "@/lib/scoring";
+import { createAdminClient } from "@/lib/supabase/server";
 import type { QuizAnswer } from "@/types";
 
 export default async function ResultsPage({
   params,
-  searchParams,
 }: {
   params: Promise<{ sessionId: string }>;
-  searchParams: Promise<{ answers?: string }>;
 }) {
   const { sessionId } = await params;
-  const { answers: answersJson } = await searchParams;
 
-  if (!answersJson) {
+  const supabase = createAdminClient();
+  const { data: session } = await supabase
+    .from("quiz_sessions")
+    .select("answers")
+    .eq("id", sessionId)
+    .single();
+
+  if (!session?.answers) {
     return (
       <main className="p-8 text-center">
         <p className="text-gray-500">No results found for session {sessionId}.</p>
@@ -20,17 +25,7 @@ export default async function ResultsPage({
     );
   }
 
-  let answers: QuizAnswer[];
-  try {
-    answers = JSON.parse(answersJson);
-  } catch {
-    return (
-      <main className="p-8 text-center">
-        <p className="text-gray-500">Could not load results. Please try your quiz again.</p>
-      </main>
-    );
-  }
-
+  const answers = session.answers as unknown as QuizAnswer[];
   const result = calculateScore(answers);
 
   return (

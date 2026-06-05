@@ -1,3 +1,5 @@
+import { shuffle } from "@/lib/shuffle";
+
 const GLOBAL_TOP_50_PLAYLIST_ID = "37i9dQZEVXbMDoHDwVN2tF";
 const CLIPS_PER_ROUND = 5;
 
@@ -31,11 +33,5 @@ export async function generateClips(token: string): Promise<TrackCandidate[]> {
     })
     .filter(Boolean) as TrackCandidate[];
 
-  // Shuffle and return 5
-  for (let i = tracks.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [tracks[i], tracks[j]] = [tracks[j], tracks[i]];
-  }
-
-  return tracks.slice(0, CLIPS_PER_ROUND);
+  return shuffle(tracks).slice(0, CLIPS_PER_ROUND);
 }
