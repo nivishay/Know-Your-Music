@@ -71,4 +71,29 @@ describe('getLikedTracks', () => {
     expect(tracks).toHaveLength(23)
     expect(mockFetch).toHaveBeenCalledTimes(1)
   })
+
+  it('preserves null preview_url — Spotify returns null for many tracks', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        items: [
+          {
+            track: {
+              id: 'track-no-preview',
+              name: 'No Preview Song',
+              artists: [{ id: 'a1', name: 'Artist' }],
+              preview_url: null,
+              album: { release_date: '2020-01-01' },
+            },
+          },
+        ],
+        next: null,
+      }),
+    })
+
+    const tracks = await getLikedTracks('tok', mockFetch)
+
+    expect(tracks).toHaveLength(1)
+    expect(tracks[0].preview_url).toBeNull()
+  })
 })

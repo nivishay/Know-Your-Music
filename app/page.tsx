@@ -15,7 +15,7 @@ export default async function LandingPage() {
         href="/auth/login"
         className="rounded-full bg-green-500 px-8 py-3 font-semibold text-white hover:bg-green-400"
       >
-        Connect with Spotify
+        Know Your Music — Connect with Spotify
       </a>
     </main>
   )

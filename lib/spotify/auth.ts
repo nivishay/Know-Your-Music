@@ -39,7 +39,13 @@ export interface TokenPair {
   refreshToken: string
 }
 
-const SCOPES = ['user-top-read', 'user-library-read']
+const SCOPES = [
+  'user-library-read',
+  'user-read-private',
+  'user-read-email',
+  'streaming',
+  'user-modify-playback-state',
+]
 
 export async function exchangeCode(
   code: string,
@@ -60,7 +66,10 @@ export async function exchangeCode(
     },
     body: body.toString(),
   })
-  if (!res.ok) throw new Error(`Token exchange failed: ${res.status}`)
+  if (!res.ok) {
+    const body = await res.text().catch(() => '(unreadable)')
+    throw new Error(`Token exchange failed: ${res.status} — ${body}`)
+  }
   const data = await res.json() as { access_token: string; refresh_token: string }
   return { accessToken: data.access_token, refreshToken: data.refresh_token }
 }
@@ -75,8 +84,15 @@ export async function getSpotifyProfile(
 ): Promise<SpotifyProfile> {
   const res = await fetchFn('https://api.spotify.com/v1/me', {
     headers: { Authorization: `Bearer ${accessToken}` },
+    cache: 'no-store',
   })
-  if (!res.ok) throw new Error(`Failed to fetch Spotify profile: ${res.status}`)
+  if (!res.ok) {
+    const body = await res.text().catch(() => '(unreadable)')
+    const retryAfter = res.headers.get('Retry-After')
+    const xRateLimit = res.headers.get('X-RateLimit-Reset')
+    console.error('[getSpotifyProfile] headers:', { retryAfter, xRateLimit })
+    throw new Error(`Failed to fetch Spotify profile: ${res.status} — ${body}`)
+  }
   return res.json() as Promise<SpotifyProfile>
 }
 

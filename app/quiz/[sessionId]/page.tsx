@@ -1,9 +1,9 @@
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { getLikedTracks } from '@/lib/spotify/tracks'
-import { pickPreviewTrack } from '@/lib/quiz/pool'
+import { pickTrack } from '@/lib/quiz/pool'
 import { buildSongQuestion } from '@/lib/quiz/question'
-import { AudioPlayer } from '@/components/AudioPlayer'
+import { SpotifyPlayer } from '@/components/SpotifyPlayer'
 import { SongQuestion } from '@/components/SongQuestion'
 
 export default async function QuizSessionPage() {
@@ -12,12 +12,12 @@ export default async function QuizSessionPage() {
   if (!accessToken) redirect('/')
 
   const tracks = await getLikedTracks(accessToken)
-  const track = pickPreviewTrack(tracks)
+  const track = pickTrack(tracks)
 
   if (!track) {
     return (
       <main className="p-8">
-        <p className="text-red-500">None of your liked songs have a preview clip available.</p>
+        <p className="text-red-500">No liked songs found.</p>
       </main>
     )
   }
@@ -26,7 +26,7 @@ export default async function QuizSessionPage() {
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-8 p-8">
-      <AudioPlayer previewUrl={track.preview_url!} />
+      <SpotifyPlayer accessToken={accessToken} trackUri={`spotify:track:${track.id}`} />
       <SongQuestion question={question} />
     </main>
   )

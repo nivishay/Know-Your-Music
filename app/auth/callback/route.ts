@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
 
   if (!code || !state || state !== storedState) {
     console.error('[auth/callback] state_mismatch — code:', !!code, 'state:', !!state, 'stateMatch:', state === storedState, 'storedState:', !!storedState)
-    const response = NextResponse.redirect(new URL('/?error=auth_failed', request.nextUrl.origin))
+    const response = NextResponse.redirect(new URL('/?error=auth_failed', env.app.url))
     response.cookies.delete('oauth_state')
     return response
   }
@@ -25,32 +25,41 @@ export async function GET(request: NextRequest) {
       clientSecret: env.spotify.clientSecret,
       redirectUri: env.spotify.redirectUri,
     })
+    console.log('[auth/callback] token exchange ok, token prefix:', accessToken.slice(0, 20))
 
-    const { id: spotifyId } = await getSpotifyProfile(accessToken)
-
-    const encryptedRefreshToken = encryptToken(refreshToken, env.encryption.secret)
-
-    const supabase = createSupabaseAdminClient()
-    const { error: upsertError } = await supabase.from('users').upsert(
-      { spotify_id: spotifyId, refresh_token: encryptedRefreshToken },
-      { onConflict: 'spotify_id' },
-    )
-    if (upsertError) {
-      console.error('[auth/callback] upsert failed:', upsertError)
-      return NextResponse.redirect(new URL('/?error=db_error', request.nextUrl.origin))
+    // Best-effort: store user in DB. If Spotify rate-limits /v1/me, skip for now —
+    // the access_token cookie is enough to use the app for the current session.
+    try {
+      const { id: spotifyId } = await getSpotifyProfile(accessToken)
+      console.log('[auth/callback] profile ok, spotifyId:', spotifyId)
+      const encryptedRefreshToken = encryptToken(refreshToken, env.encryption.secret)
+      const supabase = createSupabaseAdminClient()
+      const { error: upsertError } = await supabase.from('users').upsert(
+        { spotify_id: spotifyId, refresh_token: encryptedRefreshToken },
+        { onConflict: 'spotify_id' },
+      )
+      if (upsertError) console.error('[auth/callback] upsert failed:', upsertError)
+    } catch (profileErr) {
+      console.warn('[auth/callback] profile/upsert skipped:', (profileErr as Error).message)
     }
 
-    const response = NextResponse.redirect(new URL('/home', request.nextUrl.origin))
+    const response = NextResponse.redirect(new URL('/home', env.app.url))
     response.cookies.set('access_token', accessToken, {
       httpOnly: true,
       sameSite: 'lax',
       maxAge: 60 * 60,
       path: '/',
     })
+    response.cookies.set('refresh_token', encryptToken(refreshToken, env.encryption.secret), {
+      httpOnly: true,
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 24 * 60, // 60 days
+      path: '/',
+    })
     response.cookies.delete('oauth_state')
     return response
   } catch (err) {
     console.error('[auth/callback] error:', err)
-    return NextResponse.redirect(new URL('/?error=auth_failed', request.nextUrl.origin))
+    return NextResponse.redirect(new URL('/?error=auth_failed', env.app.url))
   }
 }

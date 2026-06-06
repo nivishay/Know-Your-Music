@@ -10,7 +10,7 @@ export async function getLikedTracks(
   fetchFn: typeof globalThis.fetch = globalThis.fetch,
 ): Promise<SpotifyTrack[]> {
   const tracks: SpotifyTrack[] = []
-  let url: string | null = 'https://api.spotify.com/v1/me/tracks?limit=50'
+  let url: string | null = 'https://api.spotify.com/v1/me/tracks?limit=50&market=from_token'
 
   while (url && tracks.length < 100) {
     const res = await fetchFn(url, {
