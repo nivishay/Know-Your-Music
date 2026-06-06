@@ -1,7 +1,6 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import Script from 'next/script'
 
 interface Props {
   accessToken: string
@@ -17,6 +16,7 @@ export function SpotifyPlayer({ accessToken, trackUri }: Props) {
   const deviceIdRef = useRef<string | null>(null)
 
   const initPlayer = useCallback(() => {
+    console.log('[SpotifyPlayer] initPlayer called')
     const player = new window.Spotify.Player({
       name: 'Know Your Music',
       getOAuthToken: (cb) => cb(accessToken),
@@ -24,19 +24,27 @@ export function SpotifyPlayer({ accessToken, trackUri }: Props) {
     })
 
     player.addListener('ready', ({ device_id }) => {
+      console.log('[SpotifyPlayer] ready, device_id:', device_id)
       deviceIdRef.current = device_id
       setIsReady(true)
     })
 
+    player.addListener('not_ready', ({ device_id }) => {
+      console.warn('[SpotifyPlayer] not_ready, device_id:', device_id)
+    })
+
     player.addListener('initialization_error', ({ message }) => {
+      console.error('[SpotifyPlayer] initialization_error:', message)
       setError(`Init error: ${message}`)
     })
 
     player.addListener('authentication_error', ({ message }) => {
+      console.error('[SpotifyPlayer] authentication_error:', message)
       setError(`Auth error: ${message}`)
     })
 
     player.addListener('account_error', ({ message }) => {
+      console.error('[SpotifyPlayer] account_error:', message)
       setError(`Account error: ${message}`)
     })
 
@@ -45,15 +53,22 @@ export function SpotifyPlayer({ accessToken, trackUri }: Props) {
       setIsPlaying(!state.paused)
     })
 
-    player.connect()
+    player.connect().then((ok) => console.log('[SpotifyPlayer] connect() resolved:', ok))
     playerRef.current = player
   }, [accessToken])
 
-  // Handle SPA navigation back to this page when SDK already loaded
   useEffect(() => {
     if (window.Spotify?.Player) {
+      // SDK already loaded (SPA navigation back to this page)
       initPlayer()
+    } else {
+      // Set callback before injecting the script so the SDK can call it on load
+      window.onSpotifyWebPlaybackSDKReady = initPlayer
+      const script = document.createElement('script')
+      script.src = 'https://sdk.scdn.co/spotify-player.js'
+      document.body.appendChild(script)
     }
+
     return () => {
       playerRef.current?.disconnect()
     }
@@ -81,11 +96,6 @@ export function SpotifyPlayer({ accessToken, trackUri }: Props) {
 
   return (
     <>
-      <Script
-        src="https://sdk.scdn.co/spotify-player.js"
-        strategy="afterInteractive"
-        onLoad={initPlayer}
-      />
       <button
         disabled={!isReady}
         onClick={toggle}
