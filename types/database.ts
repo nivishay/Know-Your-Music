@@ -30,6 +30,7 @@ export type Database = {
           score: number;
           total_possible: number;
           created_at: string;
+          clips: unknown | null;
         };
         Insert: {
           id?: string;
@@ -39,10 +40,12 @@ export type Database = {
           score: number;
           total_possible: number;
           created_at?: string;
+          clips?: unknown | null;
         };
         Update: {
           score?: number;
           total_possible?: number;
+          clips?: unknown | null;
         };
         Relationships: [];
       };

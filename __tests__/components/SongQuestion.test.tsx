@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { describe, it, expect, afterEach } from 'vitest'
-import { render, fireEvent, cleanup } from '@testing-library/react'
+import { describe, it, expect, afterEach, vi } from 'vitest'
+import { render, fireEvent, cleanup, act } from '@testing-library/react'
 import { SongQuestion } from '@/components/SongQuestion'
 import type { Question } from '@/types'
 
@@ -43,5 +43,16 @@ describe('SongQuestion', () => {
     for (const btn of getAllByRole('button')) {
       expect((btn as HTMLButtonElement).disabled).toBe(true)
     }
+  })
+
+  it('calls onAnswer with selected option after a short delay', async () => {
+    vi.useFakeTimers()
+    const onAnswer = vi.fn()
+    const { getByText } = render(<SongQuestion question={question} onAnswer={onAnswer} />)
+    fireEvent.click(getByText('Right Song'))
+    expect(onAnswer).not.toHaveBeenCalled()
+    await act(async () => { vi.runAllTimers() })
+    expect(onAnswer).toHaveBeenCalledWith('Right Song')
+    vi.useRealTimers()
   })
 })

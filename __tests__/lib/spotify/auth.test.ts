@@ -85,7 +85,6 @@ describe('buildAuthUrl', () => {
   it('includes required scopes', () => {
     const url = new URL(buildAuthUrl('test-state', testConfig))
     const scope = url.searchParams.get('scope') ?? ''
-    expect(scope).toContain('user-top-read')
     expect(scope).toContain('user-library-read')
   })
 

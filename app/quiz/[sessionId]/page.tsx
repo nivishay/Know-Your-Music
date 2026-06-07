@@ -1,33 +1,36 @@
 import { cookies } from 'next/headers'
-import { redirect } from 'next/navigation'
-import { getLikedTracks } from '@/lib/spotify/tracks'
-import { pickTrack } from '@/lib/quiz/pool'
-import { buildSongQuestion } from '@/lib/quiz/question'
-import { SpotifyPlayer } from '@/components/SpotifyPlayer'
-import { SongQuestion } from '@/components/SongQuestion'
+import { redirect, notFound } from 'next/navigation'
+import { createSupabaseAdminClient } from '@/lib/supabase/server'
+import { QuizClient } from '@/components/QuizClient'
+import type { QuizSession, Clip } from '@/types'
 
-export default async function QuizSessionPage() {
+export default async function QuizSessionPage({
+  params,
+}: {
+  params: Promise<{ sessionId: string }>
+}) {
   const cookieStore = await cookies()
   const accessToken = cookieStore.get('access_token')?.value
   if (!accessToken) redirect('/')
 
-  const tracks = await getLikedTracks(accessToken)
-  const track = pickTrack(tracks)
+  const { sessionId } = await params
+  const db = createSupabaseAdminClient()
+  const { data: row } = await db
+    .from('quiz_sessions')
+    .select('id, user_id, mode, format, clips, created_at')
+    .eq('id', sessionId)
+    .single()
 
-  if (!track) {
-    return (
-      <main className="p-8">
-        <p className="text-red-500">No liked songs found.</p>
-      </main>
-    )
+  if (!row || !row.clips) notFound()
+
+  const session: QuizSession = {
+    id: row.id,
+    userId: row.user_id,
+    mode: row.mode as QuizSession['mode'],
+    format: row.format as QuizSession['format'],
+    clips: row.clips as unknown as Clip[],
+    createdAt: row.created_at,
   }
 
-  const question = buildSongQuestion(track, tracks)
-
-  return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-8 p-8">
-      <SpotifyPlayer accessToken={accessToken} trackUri={`spotify:track:${track.id}`} />
-      <SongQuestion question={question} />
-    </main>
-  )
+  return <QuizClient session={session} accessToken={accessToken} />
 }
