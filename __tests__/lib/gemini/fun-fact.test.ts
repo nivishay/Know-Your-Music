@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('@/lib/gemini/client')
 
-import { getFunFact } from '@/lib/gemini/fun-fact'
+import { getFunFact, cache } from '@/lib/gemini/fun-fact'
 import { getGeminiModel } from '@/lib/gemini/client'
 
 function mockModel(textResult: string): ReturnType<typeof vi.fn>
@@ -28,7 +28,7 @@ function mockModel(arg: string | { throws: Error } | { delayMs: number }) {
 }
 
 describe('getFunFact', () => {
-  beforeEach(() => vi.resetAllMocks())
+  beforeEach(() => { vi.resetAllMocks(); cache.clear() })
 
   it('returns fact text when Gemini responds', async () => {
     const generateContent = mockModel('Recorded in one take. The guitar riff took 20 minutes.')
@@ -49,12 +49,12 @@ describe('getFunFact', () => {
     expect(result).toBeNull()
   })
 
-  it('returns null when Gemini takes longer than 3 seconds', async () => {
+  it('returns null when Gemini takes longer than the timeout', async () => {
     vi.useFakeTimers()
-    mockModel({ delayMs: 5000 })
+    mockModel({ delayMs: 10000 })
 
     const promise = getFunFact('Shake It Off', 'Taylor Swift', '2014')
-    vi.advanceTimersByTime(3001)
+    vi.advanceTimersByTime(5001)
     const result = await promise
 
     expect(result).toBeNull()
