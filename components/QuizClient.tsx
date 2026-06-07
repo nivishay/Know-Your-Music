@@ -21,7 +21,7 @@ interface Props {
   accessToken: string
 }
 
-export function QuizClient({ session, accessToken }: Props) {
+export function QuizClient({ session }: Props) {
   const [clipIdx, setClipIdx] = useState(0)
   const [phase, setPhase] = useState<Phase>('song')
   const [clipSongCorrect, setClipSongCorrect] = useState(false)
@@ -72,7 +72,7 @@ export function QuizClient({ session, accessToken }: Props) {
   if (done) {
     const label = getScoreLabel(finalScore, totalPossible)
     return (
-      <main className="min-h-screen bg-[#0d0d0d] text-white flex flex-col items-center justify-center gap-5 p-8">
+      <main className="min-h-dvh bg-[#0d0d0d] text-white flex flex-col items-center justify-center gap-5 p-8">
         <p className="text-sm text-gray-400 uppercase tracking-widest">Quiz Complete</p>
         <p className="text-6xl font-bold text-green-400">{finalScore} / {totalPossible}</p>
         <p className="text-2xl font-bold">{label}</p>
@@ -87,63 +87,54 @@ export function QuizClient({ session, accessToken }: Props) {
   }
 
   return (
-    <main className="min-h-screen bg-[#0d0d0d] text-white flex flex-col px-5 pt-8 pb-6 max-w-md mx-auto">
+    <main className="min-h-dvh bg-[#0d0d0d] text-white flex flex-col px-5 pt-6 pb-6 max-w-md mx-auto">
       {/* Top bar */}
-      <div className="flex items-center mb-6">
-        <a href="/home" aria-label="Home" className="text-gray-400 hover:text-white transition-colors">
+      <div className="flex items-center mb-4">
+        <a href="/home" aria-label="Home" className="text-gray-400 hover:text-white transition-colors p-1 -ml-1">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="22" height="22">
             <polyline points="15 18 9 12 15 6" />
           </svg>
         </a>
+        <span className="ml-auto text-xs text-gray-500 font-medium">
+          {clipIdx + 1} / {totalClips}
+        </span>
       </div>
 
       {/* Progress dots */}
-      <div className="flex gap-1.5 justify-center mb-8 flex-wrap">
+      <div className="flex gap-1.5 justify-center mb-5 flex-wrap">
         {Array.from({ length: totalPossible }).map((_, i) => (
           <div
             key={i}
-            className={`h-2 rounded-full transition-all duration-300 ${
-              i < completedQuestions ? 'bg-green-500 w-5' : 'bg-[#2a2a2a] w-2'
+            className={`h-1.5 rounded-full transition-all duration-300 ${
+              i < completedQuestions ? 'bg-green-500 w-5' : 'bg-[#2a2a2a] w-1.5'
             }`}
           />
         ))}
       </div>
 
       {/* Player */}
-      <div className="flex justify-center mb-10">
-        <SpotifyPlayer
-          trackUri={`spotify:track:${clip.trackId}`}
-        />
+      <div className="mb-5">
+        <SpotifyPlayer trackUri={`spotify:track:${clip.trackId}`} />
       </div>
 
       {phase === 'reveal' ? (
         <>
-          <h2 className="text-2xl font-bold text-center mb-5">Did You Know?</h2>
-
           {/* Result pills */}
-          <div className="flex gap-3 justify-center mb-6">
-            <span
-              className={`px-5 py-2 rounded-full text-sm font-semibold ${
-                clipSongCorrect
-                  ? 'bg-green-900/60 text-green-300'
-                  : 'bg-red-900/60 text-red-300'
-              }`}
-            >
+          <div className="flex gap-3 justify-center mb-4">
+            <span className={`px-5 py-2 rounded-full text-sm font-semibold ${
+              clipSongCorrect ? 'bg-green-900/60 text-green-300' : 'bg-red-900/60 text-red-300'
+            }`}>
               Song: {clipSongCorrect ? '✓' : '✗'}
             </span>
-            <span
-              className={`px-5 py-2 rounded-full text-sm font-semibold ${
-                clipArtistCorrect
-                  ? 'bg-green-900/60 text-green-300'
-                  : 'bg-red-900/60 text-red-300'
-              }`}
-            >
+            <span className={`px-5 py-2 rounded-full text-sm font-semibold ${
+              clipArtistCorrect ? 'bg-green-900/60 text-green-300' : 'bg-red-900/60 text-red-300'
+            }`}>
               Artist: {clipArtistCorrect ? '✓' : '✗'}
             </span>
           </div>
 
           {/* Song info card */}
-          <div className="bg-[#1a1a1a] rounded-2xl p-4 flex gap-4 items-center mb-4">
+          <div className="bg-[#1a1a1a] rounded-2xl p-4 flex gap-4 items-center">
             {clip.albumImageUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
@@ -161,9 +152,7 @@ export function QuizClient({ session, accessToken }: Props) {
             <div className="min-w-0">
               <p className="font-bold truncate">{clip.songName}</p>
               <p className="text-sm text-gray-400 truncate">{clip.artistName}</p>
-              <p className="text-xs text-gray-500 mt-0.5">
-                {clip.albumName} • {clip.albumYear}
-              </p>
+              <p className="text-xs text-gray-500 mt-0.5">{clip.albumName} • {clip.albumYear}</p>
             </div>
           </div>
 
@@ -172,15 +161,15 @@ export function QuizClient({ session, accessToken }: Props) {
           {/* Next button */}
           <button
             onClick={handleNext}
-            className="w-full py-4 bg-green-500 rounded-full font-bold text-lg hover:bg-green-400 active:scale-[0.98] transition-all mt-6"
+            className="w-full py-4 bg-green-500 rounded-full font-bold text-lg hover:bg-green-400 active:scale-[0.98] transition-all mt-5"
           >
             {clipIdx === totalClips - 1 ? 'See Results' : 'Next Song →'}
           </button>
         </>
       ) : (
         <>
-          <p className="text-center text-base font-semibold text-gray-300 mb-6">
-            {phase === 'song' ? 'Name That Song' : 'Who is the artist?'}
+          <p className="text-center text-sm font-semibold text-gray-400 uppercase tracking-widest mb-4">
+            {phase === 'song' ? 'Name That Song' : 'Who is the Artist?'}
           </p>
           <SongQuestion
             key={`${clipIdx}-${phase}`}
