@@ -5,9 +5,69 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 interface Props {
   accessToken: string
   trackUri: string
+  previewUrl?: string | null
 }
 
-export function SpotifyPlayer({ accessToken, trackUri }: Props) {
+// --- Mobile / preview fallback ---
+
+function PreviewPlayer({ previewUrl }: { previewUrl: string | null | undefined }) {
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [isMuted, setIsMuted] = useState(false)
+
+  if (!previewUrl) {
+    return (
+      <p className="text-sm text-gray-400 text-center">
+        No 30-second preview available for this track.
+      </p>
+    )
+  }
+
+  async function toggle() {
+    const el = audioRef.current
+    if (!el) return
+    if (isPlaying) {
+      el.pause()
+      setIsPlaying(false)
+    } else {
+      await el.play()
+      setIsPlaying(true)
+    }
+  }
+
+  function replay() {
+    const el = audioRef.current
+    if (!el) return
+    el.currentTime = 0
+    el.play().then(() => setIsPlaying(true))
+  }
+
+  function toggleMute() {
+    const el = audioRef.current
+    if (!el) return
+    el.muted = !el.muted
+    setIsMuted(el.muted)
+  }
+
+  return (
+    <>
+      {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+      <audio ref={audioRef} src={previewUrl} onEnded={() => setIsPlaying(false)} />
+      <PlayerControls
+        isReady
+        isPlaying={isPlaying}
+        isMuted={isMuted}
+        onToggle={toggle}
+        onReplay={replay}
+        onToggleMute={toggleMute}
+      />
+    </>
+  )
+}
+
+// --- SDK player ---
+
+function SdkPlayer({ accessToken, trackUri }: { accessToken: string; trackUri: string }) {
   const [isReady, setIsReady] = useState(false)
   const [isPlaying, setIsPlaying] = useState(false)
   const [hasStarted, setHasStarted] = useState(false)
@@ -17,7 +77,6 @@ export function SpotifyPlayer({ accessToken, trackUri }: Props) {
   const deviceIdRef = useRef<string | null>(null)
 
   const initPlayer = useCallback(() => {
-    console.log('[SpotifyPlayer] initPlayer called')
     const player = new window.Spotify.Player({
       name: 'Know Your Music',
       getOAuthToken: (cb) => cb(accessToken),
@@ -25,36 +84,22 @@ export function SpotifyPlayer({ accessToken, trackUri }: Props) {
     })
 
     player.addListener('ready', ({ device_id }) => {
-      console.log('[SpotifyPlayer] ready, device_id:', device_id)
       deviceIdRef.current = device_id
       setIsReady(true)
     })
 
-    player.addListener('not_ready', ({ device_id }) => {
-      console.warn('[SpotifyPlayer] not_ready, device_id:', device_id)
-    })
+    player.addListener('not_ready', () => {})
 
-    player.addListener('initialization_error', ({ message }) => {
-      console.error('[SpotifyPlayer] initialization_error:', message)
-      setError(`Init error: ${message}`)
-    })
-
-    player.addListener('authentication_error', ({ message }) => {
-      console.error('[SpotifyPlayer] authentication_error:', message)
-      setError(`Auth error: ${message}`)
-    })
-
-    player.addListener('account_error', ({ message }) => {
-      console.error('[SpotifyPlayer] account_error:', message)
-      setError(`Account error: ${message}`)
-    })
+    player.addListener('initialization_error', ({ message }) => setError(`Init error: ${message}`))
+    player.addListener('authentication_error', ({ message }) => setError(`Auth error: ${message}`))
+    player.addListener('account_error', ({ message }) => setError(`Account error: ${message}`))
 
     player.addListener('player_state_changed', (state) => {
       if (!state) return
       setIsPlaying(!state.paused)
     })
 
-    player.connect().then((ok) => console.log('[SpotifyPlayer] connect() resolved:', ok))
+    player.connect().then((ok) => console.log('[SpotifyPlayer] connect():', ok))
     playerRef.current = player
   }, [accessToken])
 
@@ -67,20 +112,12 @@ export function SpotifyPlayer({ accessToken, trackUri }: Props) {
       script.src = 'https://sdk.scdn.co/spotify-player.js'
       document.body.appendChild(script)
     }
-
-    return () => {
-      playerRef.current?.disconnect()
-    }
+    return () => { playerRef.current?.disconnect() }
   }, [initPlayer])
 
   const mountedRef = useRef(false)
-
-  // When the track changes, pause current playback and reset UI for the new song
   useEffect(() => {
-    if (!mountedRef.current) {
-      mountedRef.current = true
-      return
-    }
+    if (!mountedRef.current) { mountedRef.current = true; return }
     setHasStarted(false)
     setIsPlaying(false)
     fetch('https://api.spotify.com/v1/me/player/pause', {
@@ -94,10 +131,7 @@ export function SpotifyPlayer({ accessToken, trackUri }: Props) {
     if (!deviceId) return
     await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
       method: 'PUT',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ uris: [trackUri] }),
     })
     setHasStarted(true)
@@ -105,10 +139,7 @@ export function SpotifyPlayer({ accessToken, trackUri }: Props) {
 
   async function toggle() {
     if (!isReady) return
-    if (!hasStarted) {
-      await startPlayback()
-      return
-    }
+    if (!hasStarted) { await startPlayback(); return }
     if (isPlaying) {
       await fetch('https://api.spotify.com/v1/me/player/pause', {
         method: 'PUT',
@@ -134,13 +165,8 @@ export function SpotifyPlayer({ accessToken, trackUri }: Props) {
   async function toggleMute() {
     const player = playerRef.current
     if (!player) return
-    if (isMuted) {
-      await player.setVolume(0.5)
-      setIsMuted(false)
-    } else {
-      await player.setVolume(0)
-      setIsMuted(true)
-    }
+    if (isMuted) { await player.setVolume(0.5); setIsMuted(false) }
+    else { await player.setVolume(0); setIsMuted(true) }
   }
 
   if (error) {
@@ -149,20 +175,41 @@ export function SpotifyPlayer({ accessToken, trackUri }: Props) {
         <p className="text-sm text-red-400">{error}</p>
         <p className="text-xs text-gray-400">
           Try{' '}
-          <a href="/auth/login" className="underline">
-            re-logging in
-          </a>{' '}
-          — your session may be missing the <code>streaming</code> scope.
+          <a href="/auth/login" className="underline">re-logging in</a>
+          {' '}— your session may be missing the <code>streaming</code> scope.
         </p>
       </div>
     )
   }
 
   return (
+    <PlayerControls
+      isReady={isReady}
+      isPlaying={isPlaying}
+      isMuted={isMuted}
+      onToggle={toggle}
+      onReplay={replay}
+      onToggleMute={toggleMute}
+    />
+  )
+}
+
+// --- Shared controls UI ---
+
+interface ControlsProps {
+  isReady: boolean
+  isPlaying: boolean
+  isMuted: boolean
+  onToggle: () => void
+  onReplay: () => void
+  onToggleMute: () => void
+}
+
+function PlayerControls({ isReady, isPlaying, isMuted, onToggle, onReplay, onToggleMute }: ControlsProps) {
+  return (
     <div className="flex items-center gap-10">
-      {/* Replay */}
       <button
-        onClick={replay}
+        onClick={onReplay}
         disabled={!isReady}
         aria-label="Restart"
         className="text-gray-300 hover:text-white disabled:opacity-30 transition-colors"
@@ -172,9 +219,8 @@ export function SpotifyPlayer({ accessToken, trackUri }: Props) {
         </svg>
       </button>
 
-      {/* Play / Pause */}
       <button
-        onClick={toggle}
+        onClick={onToggle}
         disabled={!isReady}
         aria-label={isPlaying ? 'Pause' : 'Play'}
         className="w-16 h-16 rounded-full bg-green-500 flex items-center justify-center hover:bg-green-400 active:scale-95 transition-all disabled:opacity-50 shadow-lg shadow-green-900/40"
@@ -194,9 +240,8 @@ export function SpotifyPlayer({ accessToken, trackUri }: Props) {
         )}
       </button>
 
-      {/* Volume / Mute */}
       <button
-        onClick={toggleMute}
+        onClick={onToggleMute}
         aria-label={isMuted ? 'Unmute' : 'Mute'}
         className="text-gray-300 hover:text-white transition-colors"
       >
@@ -212,4 +257,20 @@ export function SpotifyPlayer({ accessToken, trackUri }: Props) {
       </button>
     </div>
   )
+}
+
+// --- Public export ---
+
+export function SpotifyPlayer({ accessToken, trackUri, previewUrl }: Props) {
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    setIsMobile(/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent))
+  }, [])
+
+  if (isMobile) {
+    return <PreviewPlayer previewUrl={previewUrl} />
+  }
+
+  return <SdkPlayer accessToken={accessToken} trackUri={trackUri} />
 }

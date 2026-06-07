@@ -114,6 +114,7 @@ export function QuizClient({ session, accessToken }: Props) {
         <SpotifyPlayer
           accessToken={accessToken}
           trackUri={`spotify:track:${clip.trackId}`}
+          previewUrl={clip.previewUrl}
         />
       </div>
 
