@@ -16,7 +16,8 @@ export async function getFunFact(song: string, artist: string, year: string): Pr
     ])
 
     return result
-  } catch {
+  } catch (err) {
+    console.error('[fun-fact] error:', err)
     return null
   }
 }
