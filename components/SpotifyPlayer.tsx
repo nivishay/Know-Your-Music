@@ -1,215 +1,121 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+
+interface SpotifyIframeController {
+  play(): void
+  pause(): void
+  togglePlay(): void
+  seek(positionMs: number): void
+  loadUri(uri: string): void
+  setVolume(volume: number): void
+  addListener(event: string, callback: (e?: { data: { isPaused: boolean; position: number } }) => void): void
+}
+
+interface SpotifyIframeAPI {
+  createController(
+    element: HTMLElement,
+    options: { uri: string; width: string; height: string },
+    callback: (controller: SpotifyIframeController) => void
+  ): void
+}
+
+declare global {
+  interface Window {
+    onSpotifyIframeApiReady?: (api: SpotifyIframeAPI) => void
+    spotifyIframeApi?: SpotifyIframeAPI
+  }
+}
 
 interface Props {
-  accessToken: string
   trackUri: string
-  previewUrl?: string | null
 }
 
-// --- Mobile / preview fallback ---
-
-function PreviewPlayer({ previewUrl }: { previewUrl: string | null | undefined }) {
-  const audioRef = useRef<HTMLAudioElement | null>(null)
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [isMuted, setIsMuted] = useState(false)
-
-  if (!previewUrl) {
-    return (
-      <p className="text-sm text-gray-400 text-center">
-        No 30-second preview available for this track.
-      </p>
-    )
-  }
-
-  async function toggle() {
-    const el = audioRef.current
-    if (!el) return
-    if (isPlaying) {
-      el.pause()
-      setIsPlaying(false)
-    } else {
-      await el.play()
-      setIsPlaying(true)
-    }
-  }
-
-  function replay() {
-    const el = audioRef.current
-    if (!el) return
-    el.currentTime = 0
-    el.play().then(() => setIsPlaying(true))
-  }
-
-  function toggleMute() {
-    const el = audioRef.current
-    if (!el) return
-    el.muted = !el.muted
-    setIsMuted(el.muted)
-  }
-
-  return (
-    <>
-      {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-      <audio ref={audioRef} src={previewUrl} onEnded={() => setIsPlaying(false)} />
-      <PlayerControls
-        isReady
-        isPlaying={isPlaying}
-        isMuted={isMuted}
-        onToggle={toggle}
-        onReplay={replay}
-        onToggleMute={toggleMute}
-      />
-    </>
-  )
-}
-
-// --- SDK player ---
-
-function SdkPlayer({ accessToken, trackUri }: { accessToken: string; trackUri: string }) {
+export function SpotifyPlayer({ trackUri }: Props) {
   const [isReady, setIsReady] = useState(false)
   const [isPlaying, setIsPlaying] = useState(false)
-  const [hasStarted, setHasStarted] = useState(false)
   const [isMuted, setIsMuted] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const playerRef = useRef<Spotify.Player | null>(null)
-  const deviceIdRef = useRef<string | null>(null)
-
-  const initPlayer = useCallback(() => {
-    const player = new window.Spotify.Player({
-      name: 'Know Your Music',
-      getOAuthToken: (cb) => cb(accessToken),
-      volume: 0.5,
-    })
-
-    player.addListener('ready', ({ device_id }) => {
-      deviceIdRef.current = device_id
-      setIsReady(true)
-    })
-
-    player.addListener('not_ready', () => {})
-
-    player.addListener('initialization_error', ({ message }) => setError(`Init error: ${message}`))
-    player.addListener('authentication_error', ({ message }) => setError(`Auth error: ${message}`))
-    player.addListener('account_error', ({ message }) => setError(`Account error: ${message}`))
-
-    player.addListener('player_state_changed', (state) => {
-      if (!state) return
-      setIsPlaying(!state.paused)
-    })
-
-    player.connect().then((ok) => console.log('[SpotifyPlayer] connect():', ok))
-    playerRef.current = player
-  }, [accessToken])
+  const controllerRef = useRef<SpotifyIframeController | null>(null)
+  const embedHostRef = useRef<HTMLDivElement | null>(null)
+  const initialUriRef = useRef(trackUri)
 
   useEffect(() => {
-    if (window.Spotify?.Player) {
-      initPlayer()
-    } else {
-      window.onSpotifyWebPlaybackSDKReady = initPlayer
-      const script = document.createElement('script')
-      script.src = 'https://sdk.scdn.co/spotify-player.js'
-      document.body.appendChild(script)
+    function initController(api: SpotifyIframeAPI) {
+      if (!embedHostRef.current) return
+      api.createController(
+        embedHostRef.current,
+        { uri: initialUriRef.current, width: '1', height: '1' },
+        (controller) => {
+          controllerRef.current = controller
+          controller.addListener('ready', () => setIsReady(true))
+          controller.addListener('playback_update', (e) => {
+            if (e?.data) setIsPlaying(!e.data.isPaused)
+          })
+        }
+      )
     }
-    return () => { playerRef.current?.disconnect() }
-  }, [initPlayer])
+
+    if (window.spotifyIframeApi) {
+      initController(window.spotifyIframeApi)
+    } else {
+      window.onSpotifyIframeApiReady = (api) => {
+        window.spotifyIframeApi = api
+        initController(api)
+      }
+      if (!document.getElementById('spotify-iframe-api-script')) {
+        const script = document.createElement('script')
+        script.id = 'spotify-iframe-api-script'
+        script.src = 'https://open.spotify.com/embed/iframe-api/v1'
+        script.async = true
+        document.body.appendChild(script)
+      }
+    }
+  }, [])
 
   const mountedRef = useRef(false)
   useEffect(() => {
     if (!mountedRef.current) { mountedRef.current = true; return }
-    setHasStarted(false)
+    const controller = controllerRef.current
+    if (!controller) return
     setIsPlaying(false)
-    fetch('https://api.spotify.com/v1/me/player/pause', {
-      method: 'PUT',
-      headers: { Authorization: `Bearer ${accessToken}` },
-    }).catch(() => {})
-  }, [trackUri, accessToken])
+    controller.loadUri(trackUri)
+  }, [trackUri])
 
-  async function startPlayback() {
-    const deviceId = deviceIdRef.current
-    if (!deviceId) return
-    await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
-      method: 'PUT',
-      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ uris: [trackUri] }),
-    })
-    setHasStarted(true)
+  function toggle() {
+    controllerRef.current?.togglePlay()
   }
 
-  async function toggle() {
-    if (!isReady) return
-    if (!hasStarted) { await startPlayback(); return }
-    if (isPlaying) {
-      await fetch('https://api.spotify.com/v1/me/player/pause', {
-        method: 'PUT',
-        headers: { Authorization: `Bearer ${accessToken}` },
-      })
-      setIsPlaying(false)
+  function replay() {
+    const controller = controllerRef.current
+    if (!controller) return
+    controller.seek(0)
+    if (!isPlaying) controller.togglePlay()
+  }
+
+  function toggleMute() {
+    const controller = controllerRef.current
+    if (!controller) return
+    if (isMuted) {
+      controller.setVolume(0.5)
+      setIsMuted(false)
     } else {
-      const deviceId = deviceIdRef.current
-      if (!deviceId) return
-      await fetch(`https://api.spotify.com/v1/me/player/play?device_id=${deviceId}`, {
-        method: 'PUT',
-        headers: { Authorization: `Bearer ${accessToken}` },
-      })
-      setIsPlaying(true)
+      controller.setVolume(0)
+      setIsMuted(true)
     }
   }
 
-  async function replay() {
-    if (!isReady) return
-    await startPlayback()
-  }
-
-  async function toggleMute() {
-    const player = playerRef.current
-    if (!player) return
-    if (isMuted) { await player.setVolume(0.5); setIsMuted(false) }
-    else { await player.setVolume(0); setIsMuted(true) }
-  }
-
-  if (error) {
-    return (
-      <div className="flex flex-col items-center gap-2 text-center">
-        <p className="text-sm text-red-400">{error}</p>
-        <p className="text-xs text-gray-400">
-          Try{' '}
-          <a href="/auth/login" className="underline">re-logging in</a>
-          {' '}— your session may be missing the <code>streaming</code> scope.
-        </p>
-      </div>
-    )
-  }
-
-  return (
-    <PlayerControls
-      isReady={isReady}
-      isPlaying={isPlaying}
-      isMuted={isMuted}
-      onToggle={toggle}
-      onReplay={replay}
-      onToggleMute={toggleMute}
-    />
-  )
-}
-
-// --- Shared controls UI ---
-
-interface ControlsProps {
-  isReady: boolean
-  isPlaying: boolean
-  isMuted: boolean
-  onToggle: () => void
-  onReplay: () => void
-  onToggleMute: () => void
-}
-
-function PlayerControls({ isReady, isPlaying, isMuted, onToggle, onReplay, onToggleMute }: ControlsProps) {
   return (
     <div className="flex items-center gap-10">
+      {/* Hidden iframe mount point — must be in DOM for IFrame API to work */}
+      <div
+        ref={embedHostRef}
+        aria-hidden="true"
+        style={{ position: 'fixed', bottom: 0, right: 0, width: 1, height: 1, overflow: 'hidden', opacity: 0 }}
+      />
+
+      {/* Restart */}
       <button
-        onClick={onReplay}
+        onClick={replay}
         disabled={!isReady}
         aria-label="Restart"
         className="text-gray-300 hover:text-white disabled:opacity-30 transition-colors"
@@ -219,8 +125,9 @@ function PlayerControls({ isReady, isPlaying, isMuted, onToggle, onReplay, onTog
         </svg>
       </button>
 
+      {/* Play / Pause */}
       <button
-        onClick={onToggle}
+        onClick={toggle}
         disabled={!isReady}
         aria-label={isPlaying ? 'Pause' : 'Play'}
         className="w-16 h-16 rounded-full bg-green-500 flex items-center justify-center hover:bg-green-400 active:scale-95 transition-all disabled:opacity-50 shadow-lg shadow-green-900/40"
@@ -240,10 +147,12 @@ function PlayerControls({ isReady, isPlaying, isMuted, onToggle, onReplay, onTog
         )}
       </button>
 
+      {/* Mute */}
       <button
-        onClick={onToggleMute}
+        onClick={toggleMute}
+        disabled={!isReady}
         aria-label={isMuted ? 'Unmute' : 'Mute'}
-        className="text-gray-300 hover:text-white transition-colors"
+        className="text-gray-300 hover:text-white disabled:opacity-30 transition-colors"
       >
         {isMuted ? (
           <svg viewBox="0 0 24 24" fill="currentColor" width="26" height="26">
@@ -257,20 +166,4 @@ function PlayerControls({ isReady, isPlaying, isMuted, onToggle, onReplay, onTog
       </button>
     </div>
   )
-}
-
-// --- Public export ---
-
-export function SpotifyPlayer({ accessToken, trackUri, previewUrl }: Props) {
-  const [isMobile, setIsMobile] = useState(false)
-
-  useEffect(() => {
-    setIsMobile(/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent))
-  }, [])
-
-  if (isMobile) {
-    return <PreviewPlayer previewUrl={previewUrl} />
-  }
-
-  return <SdkPlayer accessToken={accessToken} trackUri={trackUri} />
 }

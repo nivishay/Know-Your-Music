@@ -3,134 +3,128 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, act, cleanup } from '@testing-library/react'
 import { SpotifyPlayer } from '@/components/SpotifyPlayer'
 
-type Listener = (data: Record<string, unknown>) => void
+type PlaybackUpdateListener = (e?: { data: { isPaused: boolean; position: number } }) => void
+type ReadyListener = () => void
 
-function makeSpotifyMock() {
-  const listeners: Record<string, Listener> = {}
-  const player = {
-    addListener: vi.fn((event: string, cb: Listener) => { listeners[event] = cb }),
-    connect: vi.fn().mockResolvedValue(true),
-    disconnect: vi.fn(),
-    setVolume: vi.fn().mockResolvedValue(undefined),
+function makeIFrameMock() {
+  const listeners: Record<string, PlaybackUpdateListener | ReadyListener> = {}
+  const controller = {
+    togglePlay: vi.fn(),
+    seek: vi.fn(),
+    loadUri: vi.fn(),
+    play: vi.fn(),
+    pause: vi.fn(),
+    setVolume: vi.fn(),
+    addListener: vi.fn((event: string, cb: PlaybackUpdateListener | ReadyListener) => {
+      listeners[event] = cb
+    }),
   }
-  // eslint-disable-next-line prefer-arrow-callback
-  return { player, listeners, Player: vi.fn().mockImplementation(function () { return player }) }
+  const api = {
+    createController: vi.fn((_el: HTMLElement, _opts: unknown, callback: (c: typeof controller) => void) => {
+      callback(controller)
+    }),
+  }
+  return { api, controller, listeners }
 }
 
 describe('SpotifyPlayer', () => {
-  let spotify: ReturnType<typeof makeSpotifyMock>
+  let mock: ReturnType<typeof makeIFrameMock>
 
   beforeEach(() => {
-    spotify = makeSpotifyMock()
-    Object.assign(window, { Spotify: { Player: spotify.Player } })
-    globalThis.fetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }))
+    mock = makeIFrameMock()
+    delete window.spotifyIframeApi
+    delete window.onSpotifyIframeApiReady
   })
 
   afterEach(() => {
     cleanup()
     vi.restoreAllMocks()
+    delete window.spotifyIframeApi
+    delete window.onSpotifyIframeApiReady
   })
 
   async function renderReady() {
-    render(<SpotifyPlayer accessToken="tok" trackUri="spotify:track:abc" />)
+    render(<SpotifyPlayer trackUri="spotify:track:abc" />)
     await act(async () => {
-      spotify.listeners['ready']?.({ device_id: 'dev-1' })
+      window.onSpotifyIframeApiReady?.(mock.api)
+      ;(mock.listeners['ready'] as ReadyListener)?.()
     })
   }
 
-  async function startAndPlay() {
-    fireEvent.click(screen.getByRole('button', { name: 'Play' }))
-    await act(async () => {})
-    // SDK reports playing state
+  it('shows disabled Play button until the IFrame API is ready', async () => {
+    render(<SpotifyPlayer trackUri="spotify:track:abc" />)
+    expect(screen.getByRole('button', { name: 'Play' }).hasAttribute('disabled')).toBe(true)
+
     await act(async () => {
-      spotify.listeners['player_state_changed']?.({ paused: false })
+      window.onSpotifyIframeApiReady?.(mock.api)
+      ;(mock.listeners['ready'] as ReadyListener)?.()
     })
-  }
 
-  it('sends PUT /me/player/pause when toggling off while playing', async () => {
-    await renderReady()
-    await startAndPlay()
-    vi.mocked(fetch).mockClear()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Pause' }))
-    await act(async () => {})
-
-    expect(vi.mocked(fetch)).toHaveBeenCalledWith(
-      'https://api.spotify.com/v1/me/player/pause',
-      expect.objectContaining({ method: 'PUT' }),
-    )
+    expect(screen.getByRole('button', { name: 'Play' }).hasAttribute('disabled')).toBe(false)
   })
 
-  it('sends PUT /me/player/play when resuming while paused', async () => {
+  it('calls togglePlay when Play is clicked', async () => {
     await renderReady()
-    await startAndPlay()
-    // Pause
-    fireEvent.click(screen.getByRole('button', { name: 'Pause' }))
-    await act(async () => {
-      spotify.listeners['player_state_changed']?.({ paused: true })
-    })
-    vi.mocked(fetch).mockClear()
-
-    // Resume
     fireEvent.click(screen.getByRole('button', { name: 'Play' }))
     await act(async () => {})
-
-    expect(vi.mocked(fetch)).toHaveBeenCalledWith(
-      expect.stringContaining('/me/player/play?device_id=dev-1'),
-      expect.objectContaining({ method: 'PUT' }),
-    )
+    expect(mock.controller.togglePlay).toHaveBeenCalled()
   })
 
-  it('shows Play button when trackUri prop changes (resets started state)', async () => {
-    const { rerender } = render(
-      <SpotifyPlayer accessToken="tok" trackUri="spotify:track:first" />,
-    )
+  it('shows Pause after playback_update reports isPaused=false', async () => {
+    await renderReady()
+    fireEvent.click(screen.getByRole('button', { name: 'Play' }))
     await act(async () => {
-      spotify.listeners['ready']?.({ device_id: 'dev-1' })
+      ;(mock.listeners['playback_update'] as PlaybackUpdateListener)?.({ data: { isPaused: false, position: 0 } })
     })
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Play' }))
-    })
-    await act(async () => {
-      spotify.listeners['player_state_changed']?.({ paused: false })
-    })
-    expect(screen.queryByRole('button', { name: 'Pause' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Pause' })).toBeTruthy()
+  })
 
-    rerender(<SpotifyPlayer accessToken="tok" trackUri="spotify:track:second" />)
+  it('calls togglePlay when Pause is clicked while playing', async () => {
+    await renderReady()
+    await act(async () => {
+      ;(mock.listeners['playback_update'] as PlaybackUpdateListener)?.({ data: { isPaused: false, position: 0 } })
+    })
+    mock.controller.togglePlay.mockClear()
+    fireEvent.click(screen.getByRole('button', { name: 'Pause' }))
+    await act(async () => {})
+    expect(mock.controller.togglePlay).toHaveBeenCalled()
+  })
+
+  it('calls loadUri when trackUri prop changes', async () => {
+    const { rerender } = render(<SpotifyPlayer trackUri="spotify:track:first" />)
+    await act(async () => {
+      window.onSpotifyIframeApiReady?.(mock.api)
+      ;(mock.listeners['ready'] as ReadyListener)?.()
+    })
+
+    rerender(<SpotifyPlayer trackUri="spotify:track:second" />)
+    await act(async () => {})
+
+    expect(mock.controller.loadUri).toHaveBeenCalledWith('spotify:track:second')
+  })
+
+  it('resets to Play when trackUri changes', async () => {
+    const { rerender } = render(<SpotifyPlayer trackUri="spotify:track:first" />)
+    await act(async () => {
+      window.onSpotifyIframeApiReady?.(mock.api)
+      ;(mock.listeners['ready'] as ReadyListener)?.()
+      ;(mock.listeners['playback_update'] as PlaybackUpdateListener)?.({ data: { isPaused: false, position: 0 } })
+    })
+    expect(screen.getByRole('button', { name: 'Pause' })).toBeTruthy()
+
+    rerender(<SpotifyPlayer trackUri="spotify:track:second" />)
     await act(async () => {})
 
     expect(screen.getByRole('button', { name: 'Play' })).toBeTruthy()
   })
 
-  it('sends PUT pause when trackUri changes while playing', async () => {
-    const { rerender } = render(
-      <SpotifyPlayer accessToken="tok" trackUri="spotify:track:first" />,
-    )
-    await act(async () => { spotify.listeners['ready']?.({ device_id: 'dev-1' }) })
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Play' })) })
-    await act(async () => { spotify.listeners['player_state_changed']?.({ paused: false }) })
-    vi.mocked(fetch).mockClear()
-
-    rerender(<SpotifyPlayer accessToken="tok" trackUri="spotify:track:second" />)
-    await act(async () => {})
-
-    expect(vi.mocked(fetch)).toHaveBeenCalledWith(
-      'https://api.spotify.com/v1/me/player/pause',
-      expect.objectContaining({ method: 'PUT' }),
-    )
-  })
-
-  it('re-calls the play API when replay is clicked after starting', async () => {
+  it('calls seek(0) when Restart is clicked while playing', async () => {
     await renderReady()
-    await startAndPlay()
-    vi.mocked(fetch).mockClear()
-
+    await act(async () => {
+      ;(mock.listeners['playback_update'] as PlaybackUpdateListener)?.({ data: { isPaused: false, position: 2000 } })
+    })
     fireEvent.click(screen.getByRole('button', { name: 'Restart' }))
     await act(async () => {})
-
-    expect(vi.mocked(fetch)).toHaveBeenCalledWith(
-      expect.stringContaining('/me/player/play?device_id=dev-1'),
-      expect.objectContaining({ method: 'PUT' }),
-    )
+    expect(mock.controller.seek).toHaveBeenCalledWith(0)
   })
 })

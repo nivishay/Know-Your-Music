@@ -112,9 +112,7 @@ export function QuizClient({ session, accessToken }: Props) {
       {/* Player */}
       <div className="flex justify-center mb-10">
         <SpotifyPlayer
-          accessToken={accessToken}
           trackUri={`spotify:track:${clip.trackId}`}
-          previewUrl={clip.previewUrl}
         />
       </div>
 
