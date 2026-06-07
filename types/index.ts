@@ -5,6 +5,11 @@ export type GeneralFlavor = "charts" | "genre" | "artist";
 export interface Clip {
   trackId: string;
   previewUrl: string;
+  songName: string;
+  artistName: string;
+  albumName: string;
+  albumYear: string;
+  albumImageUrl: string | null;
   songQuestion: Question;
   artistQuestion: Question;
 }
@@ -49,5 +54,9 @@ export interface SpotifyTrack {
   name: string;
   artists: Array<{ id: string; name: string }>;
   preview_url: string | null;
-  album: { release_date: string };
+  album: {
+    name: string;
+    release_date: string;
+    images: Array<{ url: string; width: number; height: number }>;
+  };
 }
