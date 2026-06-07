@@ -27,10 +27,15 @@ describe('getLikedTracks', () => {
   })
 })
 
-// Test 2: getArtistTracks stub
 describe('getArtistTracks', () => {
-  it('returns an empty array (stub until #08)', async () => {
-    const result = await getArtistTracks('artist-123', 'token-abc')
-    expect(result).toEqual([])
+  it('delegates to lib/spotify/artist-tracks', async () => {
+    const mockFetch: typeof globalThis.fetch = async () =>
+      new Response(
+        JSON.stringify({ tracks: { items: [{ id: '1', name: 'Creep', artists: [{ id: 'a1', name: 'Radiohead' }], preview_url: null, album: { name: 'Pablo Honey', release_date: '1993-02-22', images: [] } }] } }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      )
+    const result = await getArtistTracks('Radiohead', 'token-abc', mockFetch)
+    expect(result).toHaveLength(1)
+    expect(result[0].id).toBe('1')
   })
 })

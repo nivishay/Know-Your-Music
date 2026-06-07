@@ -98,6 +98,43 @@ describe('QuizClient', () => {
     )
   })
 
+  it('shows fun fact text in reveal phase when API returns a fact', async () => {
+    vi.mocked(globalThis.fetch).mockImplementation((url) => {
+      if (typeof url === 'string' && url.includes('/api/fun-fact')) {
+        return Promise.resolve(new Response(
+          JSON.stringify({ fact: 'This song was recorded in one take.' }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        ))
+      }
+      return Promise.resolve(new Response('{"ok":true}', { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    })
+    render(<QuizClient session={session} accessToken="tok" />)
+    fireEvent.click(screen.getByText('Song 0'))
+    await advance()
+    fireEvent.click(screen.getByText('Artist 0'))
+    await advance()
+    screen.getByTestId('fun-fact')
+    screen.getByText('This song was recorded in one take.')
+  })
+
+  it('hides fun fact section when API returns null', async () => {
+    vi.mocked(globalThis.fetch).mockImplementation((url) => {
+      if (typeof url === 'string' && url.includes('/api/fun-fact')) {
+        return Promise.resolve(new Response(
+          JSON.stringify({ fact: null }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        ))
+      }
+      return Promise.resolve(new Response('{"ok":true}', { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    })
+    render(<QuizClient session={session} accessToken="tok" />)
+    fireEvent.click(screen.getByText('Song 0'))
+    await advance()
+    fireEvent.click(screen.getByText('Artist 0'))
+    await advance()
+    expect(screen.queryByTestId('fun-fact')).toBeNull()
+  })
+
   it('score does not increment on wrong answers and shows bottom label', async () => {
     render(<QuizClient session={session} accessToken="tok" />)
     for (let i = 0; i < 5; i++) {

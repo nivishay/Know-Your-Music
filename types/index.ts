@@ -1,4 +1,4 @@
-export type QuizMode = "general" | "personal";
+export type QuizMode = "general" | "personal" | "artist";
 export type QuizFormat = "round" | "streak";
 export type GeneralFlavor = "charts" | "genre" | "artist";
 

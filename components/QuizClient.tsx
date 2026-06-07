@@ -26,6 +26,7 @@ export function QuizClient({ session }: Props) {
   const [phase, setPhase] = useState<Phase>('song')
   const [clipSongCorrect, setClipSongCorrect] = useState(false)
   const [clipArtistCorrect, setClipArtistCorrect] = useState(false)
+  const [funFact, setFunFact] = useState<string | null>(null)
   const [done, setDone] = useState(false)
   const [finalScore, setFinalScore] = useState(0)
   const scoreRef = useRef(0)
@@ -47,7 +48,16 @@ export function QuizClient({ session }: Props) {
     const correct = answer === clip.artistQuestion.correct
     if (correct) scoreRef.current += 1
     setClipArtistCorrect(correct)
+    setFunFact(null)
     setPhase('reveal')
+    fetch('/api/fun-fact', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ song: clip.songName, artist: clip.artistName, year: clip.albumYear }),
+    })
+      .then((r) => r.json())
+      .then((data) => { if (data.fact) setFunFact(data.fact) })
+      .catch(() => {})
   }
 
   function handleNext() {
@@ -155,6 +165,12 @@ export function QuizClient({ session }: Props) {
               <p className="text-xs text-gray-500 mt-0.5">{clip.albumName} • {clip.albumYear}</p>
             </div>
           </div>
+
+          {funFact && (
+            <p data-testid="fun-fact" className="mt-4 text-sm text-gray-300 leading-relaxed text-center px-2">
+              {funFact}
+            </p>
+          )}
 
           <div className="flex-1" />
 

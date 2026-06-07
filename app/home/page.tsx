@@ -2,6 +2,8 @@ import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { getLikedTracks } from '@/lib/spotify/tracks'
 import { QuizModeCard } from '@/components/QuizModeCard'
+import { ArtistCard } from '@/components/ArtistCard'
+import { ArtistSearch } from '@/components/ArtistSearch'
 
 export default async function HomePage() {
   const cookieStore = await cookies()
@@ -76,47 +78,12 @@ export default async function HomePage() {
           </svg>
         </div>
 
-        {/* Search bar */}
-        <div className="relative my-4">
-          <svg
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            width="16"
-            height="16"
-          >
-            <circle cx="11" cy="11" r="8" />
-            <line x1="21" y1="21" x2="16.65" y2="16.65" />
-          </svg>
-          <input
-            className="w-full bg-[#1a1a1a] rounded-full py-2.5 pl-9 pr-4 text-sm placeholder:text-gray-500 outline-none focus:ring-1 focus:ring-green-600"
-            placeholder="Search artists..."
-            readOnly
-          />
-        </div>
+        <ArtistSearch />
 
         {/* Artist cards */}
         <div className="flex gap-3 overflow-x-auto pb-2 -mx-5 px-5 scrollbar-none">
           {artists.map((artist) => (
-            <div key={artist.name} className="flex-none w-36">
-              {artist.imageUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={artist.imageUrl}
-                  alt={artist.name}
-                  className="w-36 h-36 rounded-xl object-cover"
-                />
-              ) : (
-                <div className="w-36 h-36 rounded-xl bg-[#1a1a1a] flex items-center justify-center">
-                  <svg viewBox="0 0 24 24" fill="#9ca3af" width="40" height="40">
-                    <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z" />
-                  </svg>
-                </div>
-              )}
-              <p className="mt-2 text-sm font-medium text-center truncate">{artist.name}</p>
-            </div>
+            <ArtistCard key={artist.name} artistName={artist.name} imageUrl={artist.imageUrl} />
           ))}
         </div>
       </section>
